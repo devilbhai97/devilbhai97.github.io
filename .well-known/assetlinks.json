@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.devilbhai97.devilarena",
+        "sha256_cert_fingerprints": ["3F:CA:8D:6C:E6:AA:CA:E9:43:62:0A:5F:83:55:94:AF:0D:33:DF:30:F1:39:0A:C3:F0:0E:D0:3A:80:F7:B5:BD"]
+      }
+    }]
