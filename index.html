@@ -46,34 +46,74 @@ textarea{font:inherit;width:100%;border-radius:10px;border:1px solid var(--bd);p
 </div>
 <div id="toast" style="display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ac);color:#fff;padding:12px 18px;border-radius:12px;z-index:30;max-width:90%;text-align:center"></div>
 <script>
-let S={game:"Free Fire",teams:[],matches:[],res:{}};
+const GAMES=["Free Fire","BGMI"];
+const blank=()=>({teams:[],matches:[],res:{}});
+let S={game:"Free Fire",g:{}};
 try{const x=localStorage.getItem("t");if(x)S=JSON.parse(x)}catch(e){}
+/* पुराने डेटा को नए format में बदलना (हर game का डेटा अलग) */
+if(!S.g){S.g={"Free Fire":{teams:S.teams||[],matches:S.matches||[],res:S.res||{}}};delete S.teams;delete S.matches;delete S.res}
+GAMES.forEach(g=>{if(!S.g[g])S.g[g]=blank()});
+if(!GAMES.includes(S.game))S.game="Free Fire";
+const D=()=>S.g[S.game];
 const save=()=>{try{localStorage.setItem("t",JSON.stringify(S))}catch(e){}};
-if(!["Free Fire","BGMI"].includes(S.game))S.game="Free Fire";
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $=id=>document.getElementById(id);
 const PTS=[12,9,8,7,6,5,4,3,2,1];
-let tab="teams",open=null,bkOpen=false,bkText="";let imgUrl="",imgBlob=null,dlg=null,tmo;
+let tab="teams",open=null,bkOpen=false,bkText="",editId=null;let imgUrl="",imgBlob=null,dlg=null,tmo;
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-function addTeam(){const n=$("tn").value.trim(),c=$("tc").value.trim(),ph=$("tph").value.replace(/\D/g,"");if(!n||!c){toast("Team का नाम और आपका नाम भरें");return}if(ph.length!==10){toast("10 अंक का phone number डालें");return}S.teams.push({id:uid(),n,c,ph});save();render()}
-function delTeam(id){ask("Team हटाएँ?",()=>{S.teams=S.teams.filter(t=>t.id!==id);save()})}
-function addMatch(){const n=$("mn").value.trim();if(!n)return;S.matches.push({id:uid(),n,t:$("mt").value,r:$("mr").value.trim(),p:$("mp").value.trim()});save();render()}
-function delMatch(id){ask("Match हटाएँ?",()=>{S.matches=S.matches.filter(m=>m.id!==id);delete S.res[id];save()})}
+function setGame(g){S.game=g;open=null;editId=null;save();render()}
+function addTeam(){
+  const n=$("tn").value.trim(),c=$("tc").value.trim(),ph=$("tph").value.replace(/\D/g,"");
+  if(!n||!c){toast("Team का नाम और आपका नाम भरें");return}
+  if(ph.length!==10){toast("10 अंक का phone number डालें");return}
+  if(D().teams.some(t=>t.id!==editId&&t.n.toLowerCase()===n.toLowerCase())){toast("इस नाम की team पहले से है");return}
+  if(editId){const t=D().teams.find(t=>t.id===editId);if(t){t.n=n;t.c=c;t.ph=ph}editId=null;toast("Team अपडेट हो गई")}
+  else D().teams.push({id:uid(),n,c,ph});
+  save();render()
+}
+function editTeam(id){editId=id;render();window.scrollTo(0,0)}
+function cancelEdit(){editId=null;render()}
+function delTeam(id){ask("Team हटाएँ?",()=>{D().teams=D().teams.filter(t=>t.id!==id);for(const m in D().res)delete D().res[m][id];if(editId===id)editId=null;save()})}
+function addMatch(){const n=$("mn").value.trim();if(!n){toast("Match का नाम भरें");return}D().matches.push({id:uid(),n,t:$("mt").value,r:$("mr").value.trim(),p:$("mp").value.trim()});save();render()}
+function delMatch(id){ask("Match हटाएँ?",()=>{D().matches=D().matches.filter(m=>m.id!==id);delete D().res[id];save()})}
 function tog(id){open=open===id?null:id;render()}
-function setRes(m,t,f,v){S.res[m]=S.res[m]||{};S.res[m][t]=S.res[m][t]||{k:0,p:0};S.res[m][t][f]=Math.max(0,parseInt(v)||0);save()}
+function setRes(m,t,f,v){
+  const R=D().res;R[m]=R[m]||{};R[m][t]=R[m][t]||{k:0,p:0};R[m][t][f]=Math.max(0,parseInt(v)||0);
+  if(f==="p"&&R[m][t].p>0){const dup=Object.keys(R[m]).some(o=>o!==t&&R[m][o].p===R[m][t].p);if(dup)toast("ध्यान दें: यह placement दूसरी team को भी दी है")}
+  save()
+}
 function board(){
-  return S.teams.map(t=>{let k=0,p=0,m=0;
-    for(const mid in S.res){const r=S.res[mid][t.id];if(r&&(r.k||r.p)){m++;k+=r.k;p+=(PTS[r.p-1]||0)+r.k}}
+  const R=D().res;
+  return D().teams.map(t=>{let k=0,p=0,m=0;
+    for(const mid in R){const r=R[mid][t.id];if(r&&(r.k||r.p)){m++;k+=r.k;p+=(PTS[r.p-1]||0)+r.k}}
     return{n:t.n,m,k,p}}).sort((a,b)=>b.p-a.p||b.k-a.k);
 }
-function lbText(){return "🏆 "+S.game+" Leaderboard\n"+board().map((r,i)=>(i+1)+". "+r.n+" - "+r.p+" pts ("+r.k+" kills)").join("\n")}
 function wa(t){return "https://wa.me/91"+t.ph}
-function doBackup(){const t=JSON.stringify(S);const fb=()=>{bkOpen=true;bkText=t;render()};try{navigator.clipboard.writeText(t).then(()=>toast("Backup copy हो गया। इसे Notes जैसी सुरक्षित जगह paste करके रखिए।"),fb)}catch(e){fb()}}
-function doRestore(){let o;try{o=JSON.parse($("bk").value);if(!Array.isArray(o.teams)||!Array.isArray(o.matches))throw 0}catch(e){toast("Backup सही नहीं है");return}ask("मौजूदा डेटा की जगह backup डालें?",()=>{S={game:["Free Fire","BGMI"].includes(o.game)?o.game:"Free Fire",teams:o.teams,matches:o.matches,res:o.res||{}};save();bkOpen=false;toast("Backup वापस आ गया")})}
+function roomLink(m){
+  const msg="🏆 Devil Arena · "+S.game+"\n"+m.n+(m.t?"\n⏰ "+m.t.replace("T"," "):"")+"\nRoom ID: "+(m.r||"-")+"\nPassword: "+(m.p||"-")+"\n\nसभी team समय से पहले room में आ जाएँ।";
+  return "https://wa.me/?text="+encodeURIComponent(msg);
+}
+function backupJSON(){return JSON.stringify(S)}
+function doBackup(){const t=backupJSON();const fb=()=>{bkOpen=true;bkText=t;render()};try{navigator.clipboard.writeText(t).then(()=>toast("Backup copy हो गया। इसे Notes जैसी सुरक्षित जगह paste करके रखिए।"),fb)}catch(e){fb()}}
+async function dlBackup(){
+  const name="devil-arena-backup-"+new Date().toISOString().slice(0,10)+".json";
+  const bl=new Blob([backupJSON()],{type:"application/json"});
+  try{const f=new File([bl],name,{type:"application/json"});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e&&e.name==="AbortError")return}
+  try{const u=URL.createObjectURL(bl),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);toast("Backup file download हो गई")}catch(e){doBackup()}
+}
+function restoreFile(inp){const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{bkOpen=true;bkText=String(rd.result);render();toast("File load हो गई, अब Restore करें दबाएँ")};rd.readAsText(f)}
+function doRestore(){
+  let o;try{o=JSON.parse($("bk").value);if(!(o.g&&typeof o.g==="object")&&!(Array.isArray(o.teams)&&Array.isArray(o.matches)))throw 0}catch(e){toast("Backup सही नहीं है");return}
+  ask("मौजूदा डेटा की जगह backup डालें?",()=>{
+    const N={game:"Free Fire",g:{}};
+    if(o.g){GAMES.forEach(g=>{const x=o.g[g]||{};N.g[g]={teams:x.teams||[],matches:x.matches||[],res:x.res||{}}});N.game=GAMES.includes(o.game)?o.game:"Free Fire"}
+    else{GAMES.forEach(g=>N.g[g]=blank());N.game=GAMES.includes(o.game)?o.game:"Free Fire";N.g[N.game]={teams:o.teams,matches:o.matches,res:o.res||{}}}
+    S=N;save();bkOpen=false;bkText="";toast("Backup वापस आ गया")})
+}
 function makeImg(){const b=board(),n=Math.max(b.length,1),W=1080,H=600+n*110,c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d"),g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,"#1b0b36");g.addColorStop(1,"#0d0817");x.fillStyle=g;x.fillRect(0,0,W,H);x.fillStyle="#8a2bff";x.fillRect(0,0,W,14);x.textBaseline="middle";x.fillStyle="#f2ecff";x.font="bold 76px sans-serif";x.fillText("Devil Arena",60,120);x.fillStyle="#b79cff";x.font="bold 46px sans-serif";x.fillText(S.game+" · Leaderboard",60,200);const top=290;x.fillStyle="#a79bc4";x.font="bold 36px sans-serif";[["#",70],["Team",170],["M",600],["Kills",700],["Pts",900]].forEach(([t,px])=>x.fillText(t,px,top));if(!b.length){x.fillStyle="#f2ecff";x.font="40px sans-serif";x.fillText("अभी कोई team नहीं है",60,top+90)}b.forEach((r,i)=>{const y=top+80+i*110;x.fillStyle="#1a1129";x.fillRect(40,y-45,1000,90);x.fillStyle=["#8a2bff","#6228b0","#43207a"][i]||"#2a1d44";x.beginPath();x.arc(100,y,30,0,7);x.fill();x.fillStyle="#fff";x.font="bold 34px sans-serif";x.textAlign="center";x.fillText(String(i+1),100,y+2);x.textAlign="left";x.font="42px sans-serif";x.fillText(r.n.length>15?r.n.slice(0,14)+"…":r.n,170,y);x.fillText(String(r.m),600,y);x.fillText(String(r.k),700,y);x.font="bold 46px sans-serif";x.fillText(String(r.p),900,y)});x.fillStyle="#ffb4b4";x.font="30px sans-serif";x.fillText("Devil Bhai97 कभी कोई link नहीं भेजता, सिर्फ़ फ़ोटो भेजता है",60,H-170);x.fillText("सावधान: Admin कभी OTP या game password नहीं माँगता",60,H-115);x.fillStyle="#a79bc4";x.fillText("Devil Bhai97 · Free Tournament",60,H-55);c.toBlob(bl=>{imgBlob=bl;imgUrl=URL.createObjectURL(bl);render()},"image/png")}
 function overlay(){return `<div style="position:fixed;inset:0;background:#000d;overflow:auto;padding:16px;z-index:9"><div class="w"><img src="${imgUrl}" style="width:100%;border-radius:12px"><button style="margin-top:10px" onclick="shareImg()">📤 फ़ोटो भेजें / सेव करें</button><button class="g" onclick="closeImg()">बंद करें</button><small>अगर बटन से सेव न हो तो फ़ोटो को देर तक दबाइए, या screenshot ले लीजिए। फिर उसे WhatsApp में attach करके भेजिए।</small></div></div>`}
 function closeImg(){if(imgUrl)URL.revokeObjectURL(imgUrl);imgUrl="";imgBlob=null;render()}
-async function shareImg(){const f=new File([imgBlob],"devil-arena-leaderboard.png",{type:"image/png"});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e&&e.name==="AbortError")return}try{const dl=window.claude&&await window.claude.use("downloads");if(dl){await dl.save({filename:"devil-arena-leaderboard.png",data:imgBlob});return}}catch(e){if(e&&e.code==="declined")return}toast("फ़ोटो को देर तक दबाकर सेव करें, या screenshot लें।")}
+async function shareImg(){const f=new File([imgBlob],"devil-arena-leaderboard.png",{type:"image/png"});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(e){if(e&&e.name==="AbortError")return}try{const u=URL.createObjectURL(imgBlob),a=document.createElement("a");a.href=u;a.download="devil-arena-leaderboard.png";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);return}catch(e){}toast("फ़ोटो को देर तक दबाकर सेव करें, या screenshot लें।")}
 function ask(m,fn){dlg={msg:m,fn};render()}
 function dlgYes(){const f=dlg&&dlg.fn;dlg=null;if(f)f();render()}
 function toast(m){const e=$("toast");e.textContent=m;e.style.display="block";clearTimeout(tmo);tmo=setTimeout(()=>{e.style.display="none"},3500)}
@@ -82,27 +122,28 @@ function copyBoard(){
   const txt="🏆 "+S.game+" Leaderboard\n"+board().map((r,i)=>(i+1)+". "+r.n+" - "+r.p+" pts ("+r.k+" kills)").join("\n");
   try{navigator.clipboard.writeText(txt).then(()=>toast("Copy हो गया, WhatsApp में paste करें"),()=>{dlg={txt};render()})}catch(e){dlg={txt};render()}
 }
-function resetAll(){ask("पूरा डेटा मिटाएँ?",()=>{S={game:S.game,teams:[],matches:[],res:{}};save()})}
+function resetAll(){ask(S.game+" का पूरा डेटा मिटाएँ?",()=>{S.g[S.game]=blank();open=null;editId=null;save()})}
 function render(){
-  $("gt").textContent=S.game;$("games").innerHTML=["Free Fire","BGMI"].map(g=>`<button class="${S.game===g?"on":""}" onclick="S.game='${g}';save();render()">${g}</button>`).join("");
+  $("gt").textContent=S.game;$("games").innerHTML=GAMES.map(g=>`<button class="${S.game===g?"on":""}" onclick="setGame('${g}')">${g}</button>`).join("");
   $("tabs").innerHTML=[["teams","Teams"],["matches","Matches"],["board","Points"]].map(([k,l])=>`<button class="${tab===k?"on":""}" onclick="tab='${k}';render()">${l}</button>`).join("");
   let h="";
   if(tab==="teams"){
-    h=`<div class="c"><input id="tn" placeholder="Team का नाम"><input id="tc" placeholder="आपका नाम"><input id="tph" type="tel" inputmode="numeric" maxlength="10" placeholder="Phone number (10 अंक)"><button onclick="addTeam()">+ Team जोड़ें</button><small>Phone number सिर्फ़ आपके फ़ोन में रहता है। यह leaderboard में नहीं दिखता।</small></div>`;
-    h+=S.teams.map((t,i)=>`<div class="c r"><div><b>${i+1}. ${esc(t.n)}</b><br><small>${esc(t.c||t.p||"")}${t.ph?" · "+esc(t.ph):""}</small></div><div style="display:flex;gap:6px;align-items:center">${t.ph?`<a class="wa" href="${wa(t)}" target="_blank" rel="noopener">WhatsApp खोलें</a>`:""}<button class="g" onclick="delTeam('${t.id}')">✕</button></div></div>`).join("")||"<small>अभी कोई team नहीं है</small>";
+    const et=editId?D().teams.find(t=>t.id===editId):null;
+    h=`<div class="c"><input id="tn" placeholder="Team का नाम" value="${et?esc(et.n):""}"><input id="tc" placeholder="आपका नाम" value="${et?esc(et.c||""):""}"><input id="tph" type="tel" inputmode="numeric" maxlength="10" placeholder="Phone number (10 अंक)" value="${et?esc(et.ph||""):""}"><button onclick="addTeam()">${et?"✓ बदलाव सेव करें":"+ Team जोड़ें"}</button>${et?`<button class="g" onclick="cancelEdit()">रद्द करें</button>`:""}<small>Phone number सिर्फ़ आपके फ़ोन में रहता है। यह leaderboard में नहीं दिखता।</small></div>`;
+    h+=D().teams.map((t,i)=>`<div class="c r"><div><b>${i+1}. ${esc(t.n)}</b><br><small>${esc(t.c||t.p||"")}${t.ph?" · "+esc(t.ph):""}</small></div><div style="display:flex;gap:6px;align-items:center">${t.ph?`<a class="wa" href="${wa(t)}" target="_blank" rel="noopener">WhatsApp</a>`:""}<button class="g" onclick="editTeam('${t.id}')">✏️</button><button class="g" onclick="delTeam('${t.id}')">✕</button></div></div>`).join("")||"<small>अभी कोई team नहीं है</small>";
   }else if(tab==="matches"){
     h=`<div class="c"><input id="mn" placeholder="Match का नाम (जैसे Match 1)"><input id="mt" type="datetime-local"><input id="mr" placeholder="Room ID"><input id="mp" placeholder="Password"><button onclick="addMatch()">+ Match जोड़ें</button></div>`;
-    h+=S.matches.map(m=>{
-      let d=`<div class="c"><div class="r"><b>${esc(m.n)}</b><div><button class="g" onclick="tog('${m.id}')">Result</button> <button class="g" onclick="delMatch('${m.id}')">✕</button></div></div><small>${esc(m.t.replace("T"," "))}</small><br>Room: <b>${esc(m.r||"-")}</b> · Pass: <b>${esc(m.p||"-")}</b>`;
+    h+=D().matches.map(m=>{
+      let d=`<div class="c"><div class="r"><b>${esc(m.n)}</b><div><button class="g" onclick="tog('${m.id}')">Result</button> <button class="g" onclick="delMatch('${m.id}')">✕</button></div></div><small>${esc((m.t||"").replace("T"," "))}</small><br>Room: <b>${esc(m.r||"-")}</b> · Pass: <b>${esc(m.p||"-")}</b><div style="margin-top:8px"><a class="wa" href="${roomLink(m)}" target="_blank" rel="noopener">📤 Room ID WhatsApp पर भेजें</a></div>`;
       if(open===m.id){
-        d+=`<div class="sc"><table><tr><th>Team</th><th>Kills</th><th>Place</th></tr>`+S.teams.map(t=>{const r=(S.res[m.id]||{})[t.id]||{k:0,p:0};return `<tr><td>${esc(t.n)}</td><td><input type="number" min="0" value="${r.k||""}" onchange="setRes('${m.id}','${t.id}','k',this.value)"></td><td><input type="number" min="0" value="${r.p||""}" onchange="setRes('${m.id}','${t.id}','p',this.value)"></td></tr>`}).join("")+`</table></div>`;
+        d+=`<div class="sc"><table><tr><th>Team</th><th>Kills</th><th>Place</th></tr>`+D().teams.map(t=>{const r=(D().res[m.id]||{})[t.id]||{k:0,p:0};return `<tr><td>${esc(t.n)}</td><td><input type="number" min="0" value="${r.k||""}" onchange="setRes('${m.id}','${t.id}','k',this.value)"></td><td><input type="number" min="0" value="${r.p||""}" onchange="setRes('${m.id}','${t.id}','p',this.value)"></td></tr>`}).join("")+`</table></div>`;
       }
       return d+"</div>";
     }).join("")||"<small>अभी कोई match नहीं है</small>";
   }else{
     const b=board();
     h=`<div class="c sc"><table><tr><th>#</th><th>Team</th><th>M</th><th>Kills</th><th>Pts</th></tr>`+b.map((r,i)=>`<tr><td>${["🥇","🥈","🥉"][i]||i+1}</td><td>${esc(r.n)}</td><td>${r.m}</td><td>${r.k}</td><td><b>${r.p}</b></td></tr>`).join("")+`</table></div>`;
-    h+=`<button onclick="makeImg()">🖼 Leaderboard की फ़ोटो बनाएँ</button><button class="g" onclick="copyBoard()">📋 Text copy करें</button><button class="g" onclick="resetAll()">सब डेटा मिटाएँ</button><div class="c" style="margin-top:10px"><b>Backup</b><br><small>Backup में phone number भी होते हैं। इसे सिर्फ़ अपने पास रखिए, किसी को मत भेजिए।</small><button style="margin-top:8px" onclick="doBackup()">📋 Backup copy करें</button><button class="g" onclick="bkOpen=!bkOpen;bkText='';render()">⬆ Backup वापस डालें</button>${bkOpen?`<textarea id="bk" rows="5" placeholder="यहाँ backup paste करें">${esc(bkText)}</textarea><button onclick="doRestore()">Restore करें</button>`:""}</div><small>Points: 1st=12, 2nd=9, 3rd=8, 4th=7, 5th=6, 6th=5, 7th=4, 8th=3, 9th=2, 10th=1, और हर kill = 1 point</small>`;
+    h+=`<button onclick="makeImg()">🖼 Leaderboard की फ़ोटो बनाएँ</button><button class="g" onclick="copyBoard()">📋 Text copy करें</button><button class="g" onclick="resetAll()">${esc(S.game)} का डेटा मिटाएँ</button><div class="c" style="margin-top:10px"><b>Backup</b> <small>(दोनों games का)</small><br><small>Backup में phone number भी होते हैं। इसे सिर्फ़ अपने पास रखिए, किसी को मत भेजिए।</small><button style="margin-top:8px" onclick="dlBackup()">💾 Backup file download करें</button><button class="g" onclick="doBackup()">📋 Backup copy करें</button><button class="g" onclick="bkOpen=!bkOpen;bkText='';render()">⬆ Backup वापस डालें</button>${bkOpen?`<input type="file" accept=".json,application/json" onchange="restoreFile(this)"><textarea id="bk" rows="5" placeholder="यहाँ backup paste करें, या ऊपर से file चुनें">${esc(bkText)}</textarea><button onclick="doRestore()">Restore करें</button>`:""}</div><small>Points: 1st=12, 2nd=9, 3rd=8, 4th=7, 5th=6, 6th=5, 7th=4, 8th=3, 9th=2, 10th=1, और हर kill = 1 point</small>`;
   }
   $("app").innerHTML=h+(imgUrl?overlay():"")+dlgHtml();
 }
